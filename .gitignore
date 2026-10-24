@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Environment variables (never commit real secrets)
+.env
+.env.local
+.env.*.local
+
+# Local dev file storage (documents uploaded via the local-disk fallback)
+local-uploads/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# macOS
+.DS_Store
+
+# TypeScript
+*.tsbuildinfo
+
+# Vercel
+.vercel
+.env*
