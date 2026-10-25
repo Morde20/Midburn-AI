@@ -35,6 +35,7 @@ import {
   SIMILARITY_THRESHOLD,
   getNoMatchResponse,
   detectQuestionLocale,
+  getTodayLine,
 } from "@/lib/system-prompt";
 import { translateToHebrew } from "@/lib/translate";
 import { applyGlossary, expandSynonyms } from "@/lib/glossary";
@@ -174,7 +175,7 @@ export async function POST(req: Request) {
       ...historyModelMessages,
       {
         role: "user",
-        content: `${contextBlock}\n\nQUESTION: ${question}`,
+        content: `${getTodayLine()}\n\n${contextBlock}\n\nQUESTION: ${question}`,
       },
     ],
   });

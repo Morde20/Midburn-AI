@@ -53,9 +53,13 @@ const SYNONYM_GROUPS: { word: string; pattern: string }[][] = [
 
 const toRegex = (pattern: string) => new RegExp(`${PREFIX}(?:${pattern})${SUFFIX}`);
 
-/** True when the word is a member of any synonym group (used by keyword search). */
-export function isSynonymWord(word: string): boolean {
-  return SYNONYM_GROUPS.some((group) => group.some((m) => toRegex(m.pattern).test(word)));
+/**
+ * If the word belongs to a synonym group, returns every word of that group
+ * (used by keyword search to treat them as one term), otherwise null.
+ */
+export function synonymGroupOf(word: string): string[] | null {
+  const group = SYNONYM_GROUPS.find((g) => g.some((m) => toRegex(m.pattern).test(word)));
+  return group ? group.map((m) => m.word) : null;
 }
 
 export function expandSynonyms(text: string): string {
