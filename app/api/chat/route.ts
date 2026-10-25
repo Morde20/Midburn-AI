@@ -28,7 +28,7 @@
  */
 
 import { embedQuery } from "@/lib/embeddings";
-import { searchSimilarChunks } from "@/lib/vectorSearch";
+import { searchSimilarChunks, searchKeywordChunks } from "@/lib/vectorSearch";
 import {
   SYSTEM_PROMPT,
   buildContextBlock,
@@ -37,7 +37,7 @@ import {
   detectQuestionLocale,
 } from "@/lib/system-prompt";
 import { translateToHebrew } from "@/lib/translate";
-import { applyGlossary } from "@/lib/glossary";
+import { applyGlossary, expandSynonyms } from "@/lib/glossary";
 import { refreshStaleUrlDocuments } from "@/lib/urlDocuments";
 import { anthropic } from "@ai-sdk/anthropic";
 import {
@@ -105,11 +105,28 @@ export async function POST(req: Request) {
     detectQuestionLocale(question) === "he"
       ? glossaryNormalized
       : await translateToHebrew(glossaryNormalized);
-  const queryEmbedding = await embedQuery(retrievalQuery);
+  // Words that mean the same thing (e.g. סוללה / בטריה) are both added to
+  // the retrieval text, so the question finds the passage whichever one the
+  // document happens to use. See lib/glossary.ts.
+  const expandedQuery = expandSynonyms(retrievalQuery);
+  const queryEmbedding = await embedQuery(expandedQuery);
   await refreshing;
-  const chunks = await searchSimilarChunks(queryEmbedding, TOP_K);
+  // Two retrieval paths: embedding similarity, plus a keyword match that
+  // rescues passages containing the question's words but scoring low on
+  // similarity (long chunks that cover several topics).
+  const [vectorChunks, keywordChunks] = await Promise.all([
+    searchSimilarChunks(queryEmbedding, TOP_K),
+    searchKeywordChunks(expandedQuery),
+  ]);
 
-  const topSimilarity = chunks[0]?.similarity ?? 0;
+  const topSimilarity = vectorChunks[0]?.similarity ?? 0;
+  const vectorIsRelevant = topSimilarity >= SIMILARITY_THRESHOLD;
+  // Keyword hits go first: they contain the question's own words. Vector
+  // results follow only when they cleared the similarity bar.
+  const chunks = [
+    ...keywordChunks,
+    ...(vectorIsRelevant ? vectorChunks.filter((v) => !keywordChunks.some((k) => k.content === v.content)) : []),
+  ];
 
   // --- Cost-saving early exit: nothing relevant enough, skip the LLM -----
   // No model call happens on this path — that's the entire point, it's the
@@ -119,7 +136,7 @@ export async function POST(req: Request) {
   // — a plain Response.json() here would leave the chat UI unable to parse
   // the reply. createUIMessageStream lets us emit the canned response
   // through the same wire format without touching the model.
-  if (topSimilarity < SIMILARITY_THRESHOLD) {
+  if (chunks.length === 0) {
     const noMatchText = getNoMatchResponse(question);
     const stream = createUIMessageStream({
       execute({ writer }) {
@@ -178,7 +195,7 @@ export async function POST(req: Request) {
   // sources panel next to the answer. Only passages that cleared the
   // similarity threshold are included, capped in number and length.
   const sources = chunks
-    .filter((c) => c.similarity >= SIMILARITY_THRESHOLD)
+    .filter((c) => c.similarity >= SIMILARITY_THRESHOLD || c.keywordScore !== undefined)
     .slice(0, MAX_SOURCES)
     .map((c) => ({
       title: c.documentTitle,
@@ -188,7 +205,7 @@ export async function POST(req: Request) {
     messageMetadata: ({ part }) => (part.type === "start" ? { sources } : undefined),
   });
   response.headers.set(
-    "X-Habak-Sources",
+    "X-Midburn-Sources",
     encodeURIComponent(JSON.stringify(sourceTitles))
   );
   return response;
