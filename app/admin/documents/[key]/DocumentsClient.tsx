@@ -24,6 +24,9 @@ type DocRow = {
   chunkCount: number;
   errorMessage: string | null;
   createdAt: string;
+  sourceType: "file" | "url";
+  sourceUrl: string | null;
+  lastSyncedAt: string | null;
 };
 
 const inputCls =
@@ -60,6 +63,11 @@ export function DocumentsClient({ adminKey }: { adminKey: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
   const [uploading, setUploading] = useState(false);
+  // "file" = upload a PDF/txt/md; "link" = a Google Drive document that is
+  // re-read whenever questions are asked (see lib/urlDocuments.ts).
+  const [mode, setMode] = useState<"file" | "link">("file");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(
     null
   );
@@ -87,8 +95,12 @@ export function DocumentsClient({ adminKey }: { adminKey: string }) {
 
   function finishUpload(ok: boolean, body?: { error?: string } | null) {
     if (ok) {
-      setMessage({ kind: "ok", text: t.admin.documents.uploaded });
+      setMessage({
+        kind: "ok",
+        text: mode === "link" ? t.admin.documents.linkAdded : t.admin.documents.uploaded,
+      });
       setTitle("");
+      setLinkUrl("");
       setFileName("");
       if (fileInputRef.current) fileInputRef.current.value = "";
       loadDocs();
@@ -97,8 +109,49 @@ export function DocumentsClient({ adminKey }: { adminKey: string }) {
     }
   }
 
+  async function onSubmitLink() {
+    if (!linkUrl.trim() || !title.trim()) return;
+    setUploading(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/documents/ingest-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ title: title.trim(), url: linkUrl.trim() }),
+      });
+      const body = res.ok ? null : await res.json().catch(() => null);
+      finishUpload(res.ok, body);
+    } catch {
+      finishUpload(false, null);
+    } finally {
+      setUploading(false);
+      loadDocs();
+    }
+  }
+
+  async function onRefresh(id: string) {
+    setRefreshingId(id);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/documents/${id}/refresh`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const body = await res.json().catch(() => null);
+      setMessage(
+        res.ok
+          ? { kind: "ok", text: t.admin.documents.refreshed }
+          : { kind: "err", text: body?.error ?? t.admin.documents.error }
+      );
+    } finally {
+      setRefreshingId(null);
+      loadDocs();
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (mode === "link") return onSubmitLink();
     const file = fileInputRef.current?.files?.[0];
     if (!file || !title.trim()) return;
 
@@ -187,25 +240,67 @@ export function DocumentsClient({ adminKey }: { adminKey: string }) {
                       {docs.map((d) => (
                         <tr key={d.id} className="border-t border-ctl-line">
                           <td className="px-5 py-3 min-w-0">
-                            <p className="text-ctl-text">{d.title}</p>
+                            <p className="text-ctl-text">
+                              {d.title}
+                              {d.sourceType === "url" && (
+                                <span className="ms-2 text-[11px] px-2 py-0.5 rounded-full border border-ctl-line text-ctl-muted align-middle">
+                                  {t.admin.documents.linkBadge}
+                                </span>
+                              )}
+                            </p>
                             <p className="text-ctl-muted text-xs mt-0.5">
                               {d.status === "ready" && `${d.chunkCount} ${t.admin.documents.chunks} · `}
                               {new Date(d.createdAt).toLocaleDateString(
                                 locale === "he" ? "he-IL" : "en-US"
                               )}
-                              {d.status === "failed" && d.errorMessage ? ` · ${d.errorMessage}` : ""}
+                              {d.sourceType === "url" && d.lastSyncedAt
+                                ? ` · ${t.admin.documents.lastSynced}: ${new Date(
+                                    d.lastSyncedAt
+                                  ).toLocaleTimeString(locale === "he" ? "he-IL" : "en-US", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}`
+                                : ""}
                             </p>
+                            {d.errorMessage && (
+                              <p className="text-ctl-bad text-xs mt-0.5" dir="auto">
+                                {d.errorMessage}
+                              </p>
+                            )}
                           </td>
                           <td className="px-3 py-3">
                             <StatusBadge status={d.status} />
                           </td>
                           <td className="px-5 py-3">
-                            <button
-                              onClick={() => onDelete(d.id)}
-                              className="text-xs text-ctl-bad hover:underline"
-                            >
-                              {t.admin.documents.delete}
-                            </button>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              {d.sourceType === "url" && d.sourceUrl && (
+                                <>
+                                  <a
+                                    href={d.sourceUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs text-ctl-amber hover:underline"
+                                  >
+                                    {t.admin.documents.openLink}
+                                  </a>
+                                  <button
+                                    onClick={() => onRefresh(d.id)}
+                                    disabled={refreshingId === d.id}
+                                    className="text-xs text-ctl-amber hover:underline disabled:opacity-50"
+                                  >
+                                    {refreshingId === d.id
+                                      ? t.admin.documents.refreshing
+                                      : t.admin.documents.refresh}
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                onClick={() => onDelete(d.id)}
+                                className="text-xs text-ctl-bad hover:underline"
+                              >
+                                {t.admin.documents.delete}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -221,6 +316,26 @@ export function DocumentsClient({ adminKey }: { adminKey: string }) {
               className="bg-ctl-panel border border-ctl-line rounded-2xl p-5 space-y-3"
             >
               <h2 className="text-sm font-medium text-ctl-muted mb-1">{t.admin.documents.newDoc}</h2>
+              <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-ctl-night border border-ctl-line">
+                {(["file", "link"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setMode(m);
+                      setMessage(null);
+                    }}
+                    aria-pressed={mode === m}
+                    className={`rounded-lg px-3 py-2 text-sm ${
+                      mode === m
+                        ? "bg-ctl-amber text-ctl-night font-semibold"
+                        : "text-ctl-muted hover:text-ctl-text"
+                    }`}
+                  >
+                    {m === "file" ? t.admin.documents.sourceFile : t.admin.documents.sourceLink}
+                  </button>
+                ))}
+              </div>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -228,33 +343,60 @@ export function DocumentsClient({ adminKey }: { adminKey: string }) {
                 required
                 className={inputCls}
               />
-              {/* The native file input stays in the DOM (hidden) so the
-                  existing ref-based upload logic is unchanged; the visible
-                  button just opens it. */}
-              <input
-                ref={fileInputRef}
-                id="doc-file"
-                type="file"
-                accept=".pdf,.txt,.md"
-                required
-                onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
-                className="sr-only"
-              />
-              <label
-                htmlFor="doc-file"
-                className="flex items-center gap-3 border border-dashed border-ctl-line rounded-xl px-3.5 py-2.5 text-sm cursor-pointer hover:border-ctl-amber"
-              >
-                <span className="text-ctl-amber shrink-0">{t.admin.documents.chooseFile}</span>
-                <span className="text-ctl-muted truncate" dir="auto">
-                  {fileName}
-                </span>
-              </label>
+              {mode === "file" ? (
+                <>
+                {/* The native file input stays in the DOM (hidden) so the
+                    existing ref-based upload logic is unchanged; the visible
+                    button just opens it. */}
+                <input
+                  ref={fileInputRef}
+                  id="doc-file"
+                  type="file"
+                  accept=".pdf,.txt,.md"
+                  required
+                  onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
+                  className="sr-only"
+                />
+                <label
+                  htmlFor="doc-file"
+                  className="flex items-center gap-3 border border-dashed border-ctl-line rounded-xl px-3.5 py-2.5 text-sm cursor-pointer hover:border-ctl-amber"
+                >
+                  <span className="text-ctl-amber shrink-0">{t.admin.documents.chooseFile}</span>
+                  <span className="text-ctl-muted truncate" dir="auto">
+                    {fileName}
+                  </span>
+                </label>
+                </>
+              ) : (
+                <>
+                  <input
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    placeholder={t.admin.documents.linkUrl}
+                    type="url"
+                    inputMode="url"
+                    dir="ltr"
+                    required
+                    aria-label={t.admin.documents.linkUrl}
+                    className={inputCls}
+                  />
+                  <p className="text-xs text-ctl-muted leading-relaxed">
+                    {t.admin.documents.linkHint}
+                  </p>
+                </>
+              )}
               <button
                 type="submit"
                 disabled={uploading}
                 className="w-full bg-ctl-amber text-ctl-night font-semibold rounded-xl px-4 py-2.5 text-sm disabled:opacity-50 hover:brightness-110"
               >
-                {uploading ? t.admin.documents.uploading : t.admin.documents.upload}
+                {mode === "link"
+                  ? uploading
+                    ? t.admin.documents.addingLink
+                    : t.admin.documents.addLink
+                  : uploading
+                    ? t.admin.documents.uploading
+                    : t.admin.documents.upload}
               </button>
               {message && (
                 <p className={`text-xs ${message.kind === "ok" ? "text-ctl-ok" : "text-ctl-bad"}`}>

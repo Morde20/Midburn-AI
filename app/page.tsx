@@ -1,16 +1,18 @@
 "use client";
 
 /**
- * app/page.tsx — "control room" chat interface with an FAQ menu and a
- * sources panel. Public: no login, and nothing is stored server-side.
+ * app/page.tsx — "control room" chat interface with a wide homepage (full-
+ * bleed photo, glass card with both logos, intro text, FAQ chips) and a
+ * sources panel. Public: no login, and
+ * nothing is stored server-side.
  *
  * Behavior:
- *   - The page lands on the empty-state homepage (photo banner + greeting +
- *     input + FAQ chips). Conversations live only in this browser tab's
- *     memory; there is no history list.
+ *   - The page lands on the empty-state homepage (Midburn + Past Forward
+ *     logos, intro text, input + FAQ chips on a glass card over the photo). Conversations live
+ *     only in this browser tab's memory; there is no history list and no
+ *     sidebar — a "New chat" button in the header returns to the homepage.
  *   - Clicking a FAQ chip sends that question to the assistant like any
- *     typed question (real RAG answer + sources). The sidebar FAQ accordion
- *     does the same.
+ *     typed question (real RAG answer + sources).
  *   - After 5 minutes of no new messages the view resets to the homepage.
  *   - Sources: the server attaches the retrieved passages as message
  *     metadata (see app/api/chat/route.ts). On lg+ screens they are shown
@@ -31,17 +33,9 @@ type HabakMessage = UIMessage<{ sources?: SourceItem[] }>;
 
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 
-// Amber duotone treatment for the Midburn photo.
-const PHOTO_FILTER =
-  "sepia(1) saturate(2.4) hue-rotate(-14deg) brightness(.66) contrast(1.15)";
-
 export default function ChatPage() {
   const [input, setInput] = useState("");
-  const [faqOpen, setFaqOpen] = useState(false);
   const [openSourcesFor, setOpenSourcesFor] = useState<string | null>(null);
-  // Sidebar is an always-visible column on md+ screens, but an off-canvas
-  // drawer on phones (closed by default so the homepage isn't obstructed).
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { t, dir, locale } = useLanguage();
 
   const transport = useMemo(
@@ -72,7 +66,6 @@ export default function ChatPage() {
 
   function goToHomepage() {
     setMessages([]);
-    setSidebarOpen(false); // no-op on desktop, closes the mobile drawer
   }
 
   function sendQuestion(text: string) {
@@ -80,12 +73,11 @@ export default function ChatPage() {
     sendMessage({ text });
   }
 
-  // FAQ questions (homepage chips + sidebar list): start a fresh chat and
-  // send the question, so the user gets a real answer.
+  // FAQ chips: start a fresh chat and send the question, so the user gets
+  // a real answer.
   function askFaq(text: string) {
     if (isBusy) return;
     setMessages([]);
-    setSidebarOpen(false);
     sendMessage({ text });
   }
 
@@ -132,109 +124,58 @@ export default function ChatPage() {
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
   const panelSources = lastAssistant?.metadata?.sources ?? [];
 
-  // Off-canvas drawer positioning on mobile: fixed to the side that matches
-  // the sidebar's normal (dir-mirrored) position, slid fully offscreen when
-  // closed. md+ overrides all of that back to a normal static column.
-  const mobileDrawerPosition = dir === "rtl" ? "right-0" : "left-0";
-  const mobileDrawerHidden = dir === "rtl" ? "translate-x-full" : "-translate-x-full";
+  const homeView = (
+    <div className="flex-1 overflow-y-auto">
+      <div className="min-h-full flex items-center justify-center px-4 sm:px-6 py-6 sm:py-10">
+        <section className="w-full max-w-[960px] bg-ctl-panel/80 backdrop-blur-md border border-ctl-text/15 rounded-[32px] px-6 py-8 sm:px-12 sm:py-11 shadow-2xl flex flex-col items-center gap-5 sm:gap-6">
+          <h1 className="sr-only">{t.chat.greeting}</h1>
 
-  const sidebar = (
-    <aside
-      dir={dir}
-      className={`absolute inset-y-0 ${mobileDrawerPosition} z-40 w-72 border-e border-ctl-line flex flex-col bg-ctl-panel shadow-2xl transition-transform duration-200 ease-in-out ${
-        sidebarOpen ? "translate-x-0" : mobileDrawerHidden
-      } md:static md:z-auto md:w-64 md:shadow-none md:translate-x-0 md:shrink-0`}
-    >
-      <div className="p-3 border-b border-ctl-line flex items-center gap-2">
-        <button
-          onClick={goToHomepage}
-          className="flex-1 text-sm bg-ctl-panel2 border border-ctl-line text-ctl-amber rounded-xl px-4 py-2 hover:border-ctl-amber"
-        >
-          + {t.chat.newChat}
-        </button>
-        <button
-          onClick={() => setSidebarOpen(false)}
-          aria-label={t.chat.closeMenu}
-          className="md:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-xl border border-ctl-line bg-ctl-panel2 text-ctl-muted hover:text-ctl-text"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="flex-1" />
-      {/* FAQ accordion, pinned to the bottom of the sidebar.
-          Content is rendered above the toggle button so opening it grows
-          the panel upward rather than pushing the button off the bottom. Static answers —
-          see lib/faq.ts. */}
-      <div className="border-t border-ctl-line shrink-0">
-        {faqOpen && (
-          <div className="max-h-72 overflow-y-auto px-4 py-3 space-y-3 border-b border-ctl-line">
-            {FAQ_ITEMS.length === 0 ? (
-              <p className="text-xs text-ctl-muted">{t.chat.faqEmpty}</p>
-            ) : (
-              FAQ_ITEMS.map((item, i) => (
+          {/* Midburn + Past Forward 2026 logos, side by side. */}
+          <div className="flex flex-wrap items-center justify-center gap-5 sm:gap-7">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/midburn-logo.png" alt="Midburn" className="h-20 sm:h-28 w-auto" />
+            <div aria-hidden="true" className="w-px h-14 sm:h-20 bg-ctl-text/20" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/past-forward-2026.png"
+              alt="Past Forward — Midburn 2026"
+              className="h-16 sm:h-24 w-auto max-w-full"
+            />
+          </div>
+
+          <h2 className="text-xl sm:text-2xl font-bold leading-snug text-ctl-amber text-center">
+            {t.home.title}
+          </h2>
+
+          <div className="max-w-[720px] text-center flex flex-col gap-3">
+            <p className="text-lg sm:text-[19px] font-semibold">{t.home.p1}</p>
+            <p className="text-base leading-relaxed">{t.home.p2}</p>
+            <p className="text-base leading-relaxed">{t.home.p3}</p>
+            <p className="text-base leading-relaxed">{t.home.p4}</p>
+            <p className="text-[17px] font-semibold">{t.home.p5}</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-ctl-muted">{t.home.disclaimer}</p>
+          </div>
+
+          <div className="w-full h-px bg-ctl-text/15" />
+
+          <div className="w-full max-w-[760px] pb-[env(safe-area-inset-bottom)]">{inputBar}</div>
+
+          {FAQ_ITEMS.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-2.5">
+              {FAQ_ITEMS.map((item, i) => (
                 <button
                   key={i}
                   type="button"
                   disabled={isBusy}
                   onClick={() => askFaq(item.question[locale])}
-                  className="block w-full text-start text-sm text-ctl-text/90 hover:text-ctl-amber disabled:opacity-50"
+                  className="text-sm text-ctl-text/90 bg-ctl-night/55 border border-[#5A4635] rounded-full px-4 py-2.5 hover:border-ctl-amber hover:text-ctl-amber disabled:opacity-50"
                 >
                   {item.question[locale]}
                 </button>
-              ))
-            )}
-          </div>
-        )}
-        <button
-          onClick={() => setFaqOpen((open) => !open)}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm text-ctl-text/80 hover:bg-ctl-panel2"
-        >
-          <span>{t.chat.faq}</span>
-          <span
-            className={`text-xs text-ctl-muted transition-transform duration-200 ${
-              faqOpen ? "rotate-180" : ""
-            }`}
-          >
-            ▲
-          </span>
-        </button>
-      </div>
-    </aside>
-  );
-
-  const homeView = (
-    <div className="flex-1 overflow-y-auto">
-      {/* Photo banner with amber duotone, fading into the page. */}
-      <div className="relative h-[clamp(13rem,28vw,24rem)] overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/midburn-hero.jpg"
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover object-[center_25%]"
-          style={{ filter: PHOTO_FILTER }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-ctl-night via-ctl-night/40 to-transparent" />
-      </div>
-      <div className="relative -mt-14 sm:-mt-12 px-4 pb-10 max-w-2xl w-full mx-auto flex flex-col items-center gap-5">
-        <h1 className="text-2xl sm:text-3xl font-semibold text-ctl-text text-center">
-          {t.chat.greeting}
-        </h1>
-        <div className="w-full pb-[env(safe-area-inset-bottom)]">{inputBar}</div>
-        {FAQ_ITEMS.length > 0 && (
-          <div className="w-full flex flex-wrap justify-center gap-2">
-            {FAQ_ITEMS.map((item, i) => (
-              <button
-                key={i}
-                type="button"
-                disabled={isBusy}
-                onClick={() => askFaq(item.question[locale])}
-                className="text-[13px] text-ctl-text/90 bg-ctl-panel border border-ctl-line rounded-full px-4 py-2 hover:border-ctl-amber hover:text-ctl-amber disabled:opacity-50"
-              >
-                {item.question[locale]}
-              </button>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
@@ -315,7 +256,7 @@ export default function ChatPage() {
             )}
           </div>
         </div>
-        <div className="border-t border-ctl-line px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <div className="border-t border-ctl-line bg-ctl-night/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <div className="max-w-2xl w-full mx-auto">{inputBar}</div>
         </div>
       </div>
@@ -323,7 +264,7 @@ export default function ChatPage() {
       {/* Desktop sources panel (end side). */}
       <aside
         dir={dir}
-        className="hidden lg:flex lg:w-80 xl:w-96 shrink-0 flex-col border-s border-ctl-line bg-ctl-panel"
+        className="hidden lg:flex lg:w-80 xl:w-96 shrink-0 flex-col border-s border-ctl-line bg-ctl-panel/90"
       >
         <div className="px-4 py-3 border-b border-ctl-line">
           <h2 className="text-sm font-medium text-ctl-text">{t.chat.sources}</h2>
@@ -342,32 +283,27 @@ export default function ChatPage() {
     </div>
   );
 
-  // Backdrop behind the mobile drawer — clicking it closes the sidebar,
-  // same as starting a new chat does. Hidden at
-  // md+ where the sidebar is a static column, not an overlay.
-  const mobileBackdrop = sidebarOpen ? (
-    <div
-      onClick={() => setSidebarOpen(false)}
-      className="absolute inset-0 z-30 bg-black/50 md:hidden"
-      aria-hidden="true"
-    />
-  ) : null;
-
   return (
-    <div className="flex flex-col h-dvh bg-ctl-night">
-      <Header onMenu={() => setSidebarOpen(true)} />
-      {/* `relative` here is what the sidebar/backdrop's `absolute inset-*`
-          position against — keeps the mobile drawer scoped to the area
-          below the header instead of a `fixed` overlay covering it.
-          DOM order is always sidebar-then-content: the `dir` attribute
-          below makes the browser mirror the flex row automatically (start
-          = left in ltr, right in rtl), so this one order already renders
-          the sidebar on the left for English and the right for Hebrew —
-          no manual swapping needed. */}
-      <div className="relative flex flex-1 min-h-0" dir={dir}>
-        {mobileBackdrop}
-        {sidebar}
-        <main className="flex flex-col flex-1 min-w-0">
+    <div className="relative flex flex-col h-dvh bg-ctl-night overflow-hidden">
+      {/* Midburn photo behind everything: lightly dimmed on the homepage,
+          almost fully dimmed while chatting so text stays readable. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/midburn-photo.jpg"
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover object-[center_55%]"
+      />
+      <div
+        aria-hidden="true"
+        className={`absolute inset-0 ${
+          isEmpty
+            ? "bg-gradient-to-b from-ctl-night/25 via-ctl-night/55 to-ctl-night/90"
+            : "bg-ctl-night/90"
+        }`}
+      />
+      <div className="relative flex flex-col flex-1 min-h-0">
+        <Header onNewChat={isEmpty ? undefined : goToHomepage} transparent={isEmpty} />
+        <main dir={dir} className="flex flex-col flex-1 min-h-0 min-w-0">
           {isEmpty ? homeView : chatView}
         </main>
       </div>

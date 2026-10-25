@@ -62,7 +62,11 @@ Full optimization rationale (Haiku vs. Sonnet, sliding window, top-K vs. whole-d
 
 ### Chat UI state (`app/page.tsx`)
 
-Single-session chat: the conversation lives only in browser memory (`useChat`), nothing is persisted and there is no history list. The page lands on an empty greeting+input homepage; a 5-minute inactivity timer resets it to the homepage. The sidebar (static column on `md+`, off-canvas drawer on mobile) holds only "New chat" and the FAQ accordion. DOM order is always sidebar-then-content; the browser's `dir`-based flex mirroring puts the sidebar on the correct physical side for both languages — don't reintroduce a `dir === "rtl" ? ... : ...` swap there.
+Single-session chat: the conversation lives only in browser memory (`useChat`), nothing is persisted and there is no history list. There is **no sidebar**: the page lands on a wide homepage (full-bleed photo with a glass card holding the Midburn and Past Forward 2026 logos, the intro text from `t.home` in `lib/i18n/dictionary.ts`, greeting + input, FAQ chips from `lib/faq.ts`). While a conversation is open, the header shows a "+ New chat" button that returns to the homepage; a 5-minute inactivity timer does the same. Midburn assets live in `public/` (`midburn-logo.png`, `midburn-photo.jpg`, `past-forward-2026.png`, a transparent recolored version of the logo for dark backgrounds).
+
+### Google Drive link documents (`lib/googleDrive.ts`, `lib/urlDocuments.ts`)
+
+Besides file uploads, the documents admin page can add a **Google Drive link** (Doc, Sheet, Slides, or a PDF/txt in Drive, shared as "Anyone with the link – Viewer"; no Google credentials). These rows have `documents.source_type = 'url'`. `app/api/chat/route.ts` calls `refreshStaleUrlDocuments()` on every question: any link document not checked in the last `URL_DOC_REFRESH_SECONDS` (default 60) is re-read, and re-chunked/re-embedded only if its SHA-256 changed, so answers follow edits to the Drive document. A failed re-read keeps serving the last good content and shows the error in the admin list. New columns need `npm run db:push` (or `drizzle/migrations/0002_document_url_sources.sql`).
 
 ### i18n / RTL
 
