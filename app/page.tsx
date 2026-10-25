@@ -127,7 +127,7 @@ export default function ChatPage() {
   const homeView = (
     <div className="flex-1 overflow-y-auto">
       <div className="min-h-full flex items-center justify-center px-4 sm:px-6 py-6 sm:py-10">
-        <section className="w-full max-w-[960px] bg-ctl-panel/80 backdrop-blur-md border border-ctl-text/15 rounded-[32px] px-6 py-8 sm:px-12 sm:py-11 shadow-2xl flex flex-col items-center gap-5 sm:gap-6">
+        <section className="w-full max-w-[960px] glass-text bg-ctl-panel/25 backdrop-blur-none border border-ctl-text/15 rounded-[32px] px-6 py-8 sm:px-12 sm:py-11 shadow-2xl flex flex-col items-center gap-5 sm:gap-6">
           <h1 className="sr-only">{t.chat.greeting}</h1>
 
           {/* Midburn + Past Forward 2026 logos, side by side. */}
@@ -153,7 +153,7 @@ export default function ChatPage() {
             <p className="text-base leading-relaxed">{t.home.p3}</p>
             <p className="text-base leading-relaxed">{t.home.p4}</p>
             <p className="text-[17px] font-semibold">{t.home.p5}</p>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-ctl-muted">{t.home.disclaimer}</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-[#C4AF98]">{t.home.disclaimer}</p>
           </div>
 
           <div className="w-full h-px bg-ctl-text/15" />

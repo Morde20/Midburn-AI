@@ -27,9 +27,16 @@ export async function POST(req: Request) {
     );
   }
 
-  const result = await ingestUrlDocument({ title: title.trim(), url: url.trim() });
-  if (result.status === "failed") {
-    return Response.json(result, { status: 500 });
+  try {
+    const result = await ingestUrlDocument({ title: title.trim(), url: url.trim() });
+    if (result.status === "failed") {
+      return Response.json(result, { status: 500 });
+    }
+    return Response.json(result);
+  } catch (err) {
+    // Surface the real cause (e.g. a missing DB column) instead of a generic error.
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("ingest-url failed:", err);
+    return Response.json({ error: message }, { status: 500 });
   }
-  return Response.json(result);
 }
