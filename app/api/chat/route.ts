@@ -1,8 +1,8 @@
 /**
  * app/api/chat/route.ts
  *
- * The core RAG query endpoint. Available to both roles (auth is enforced
- * by middleware.ts — any authenticated user may reach this route).
+ * The core RAG query endpoint. Public (no login) and stateless: nothing
+ * about the conversation is stored server-side.
  *
  * Wire format: the client (`useChat` + `DefaultChatTransport`, see
  * app/page.tsx) POSTs `{ messages: UIMessage[] }` and expects back a
@@ -27,10 +27,6 @@
  *   5. max output tokens capped — these are operational answers, not essays.
  */
 
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { messages as messagesTable, conversations } from "@/drizzle/schema";
-import { eq, and } from "drizzle-orm";
 import { embedQuery } from "@/lib/embeddings";
 import { searchSimilarChunks } from "@/lib/vectorSearch";
 import {
@@ -68,32 +64,6 @@ function getMessageText(message: UIMessage): string {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // conversationId travels as a query param rather than in the JSON body —
-  // deliberately avoids depending on whichever body-merging convention the
-  // installed `ai` package version's transport happens to use (that's
-  // already bitten us twice this session on unrelated APIs).
-  const { searchParams } = new URL(req.url);
-  const conversationId = searchParams.get("conversationId");
-  if (!conversationId) {
-    return Response.json({ error: "conversationId is required" }, { status: 400 });
-  }
-
-  const userId = session.user.id;
-
-  const [conversation] = await db
-    .select({ id: conversations.id })
-    .from(conversations)
-    .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
-    .limit(1);
-  if (!conversation) {
-    return Response.json({ error: "Conversation not found" }, { status: 404 });
-  }
-
   const { messages } = (await req.json()) as { messages: UIMessage[] };
   if (!messages?.length) {
     return Response.json({ error: "messages is required" }, { status: 400 });
@@ -105,14 +75,6 @@ export async function POST(req: Request) {
   if (!question.trim()) {
     return Response.json({ error: "Empty question" }, { status: 400 });
   }
-
-  // Persist the volunteer's question immediately — the client always sends
-  // the full running message array, but only this last one is new, so this
-  // is the only row we write here (earlier turns were already persisted on
-  // previous requests). Also bumps the conversation's updatedAt so the
-  // sidebar reorders and the client's inactivity timer has a fresh anchor.
-  await db.insert(messagesTable).values({ userId, conversationId, role: "user", content: question });
-  await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, conversationId));
 
   // --- Sliding window: keep only the most recent turns, drop the rest ----
   const trimmedHistory = messages.slice(
@@ -150,8 +112,6 @@ export async function POST(req: Request) {
   // through the same wire format without touching the model.
   if (topSimilarity < SIMILARITY_THRESHOLD) {
     const noMatchText = getNoMatchResponse(question);
-    await db.insert(messagesTable).values({ userId, conversationId, role: "assistant", content: noMatchText });
-    await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, conversationId));
     const stream = createUIMessageStream({
       execute({ writer }) {
         writer.write({ type: "text-start", id: "no-match" });
@@ -191,13 +151,6 @@ export async function POST(req: Request) {
         content: `${contextBlock}\n\nQUESTION: ${question}`,
       },
     ],
-    onFinish: async ({ text }) => {
-      // Persist the assistant's final answer once streaming completes.
-      // Runs after the response has already been sent to the browser, so it
-      // doesn't add latency to what the volunteer sees.
-      await db.insert(messagesTable).values({ userId, conversationId, role: "assistant", content: text });
-      await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, conversationId));
-    },
   });
 
   // The system prompt (rule 6) already instructs the model to cite source

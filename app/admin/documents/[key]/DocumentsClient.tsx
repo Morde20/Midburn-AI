@@ -3,11 +3,11 @@
 /**
  * app/admin/documents/page.tsx
  *
- * Admin-only page (enforced by middleware.ts's "/admin" prefix rule) to
- * upload new documents into the knowledge base and manage existing ones.
- * Talks to the existing app/api/documents* routes — no new backend needed
- * beyond the local-disk storage fallback already wired into the upload
- * route (see lib/storage.ts).
+ * Client UI for uploading/managing knowledge-base documents. Only reachable
+ * through the secret URL /admin/documents/<DOCUMENTS_ADMIN_KEY> (see
+ * page.tsx next to this file). The key is sent with every API call as an
+ * x-admin-key header (or a ?key= param for the Blob client upload), which
+ * is what middleware.ts checks.
  */
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -50,7 +50,8 @@ function StatusBadge({ status }: { status: DocStatus }) {
   );
 }
 
-export default function AdminDocumentsPage() {
+export function DocumentsClient({ adminKey }: { adminKey: string }) {
+  const authHeaders = { "x-admin-key": adminKey };
   const { t, dir, locale } = useLanguage();
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,12 +66,12 @@ export default function AdminDocumentsPage() {
 
   const loadDocs = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/documents");
+    const res = await fetch("/api/documents", { headers: authHeaders });
     if (res.ok) {
       setDocs(await res.json());
     }
     setLoading(false);
-  }, []);
+  }, [adminKey]);
 
   useEffect(() => {
     loadDocs();
@@ -117,12 +118,12 @@ export default function AdminDocumentsPage() {
       // handles files well past our 20MB app-level cap.
       const blob = await upload(`habak-docs/${file.name}`, file, {
         access: "public",
-        handleUploadUrl: "/api/documents/upload-token",
+        handleUploadUrl: `/api/documents/upload-token?key=${encodeURIComponent(adminKey)}`,
       });
 
       const res = await fetch("/api/documents/ingest", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
           title: title.trim(),
           blobUrl: blob.url,
@@ -139,6 +140,7 @@ export default function AdminDocumentsPage() {
 
       const res = await fetch("/api/documents/upload", {
         method: "POST",
+        headers: authHeaders,
         body: formData,
       });
       const body = res.ok ? null : await res.json().catch(() => null);
@@ -150,7 +152,7 @@ export default function AdminDocumentsPage() {
 
   async function onDelete(id: string) {
     if (!confirm(t.admin.documents.deleteConfirm)) return;
-    await fetch(`/api/documents/${id}`, { method: "DELETE" });
+    await fetch(`/api/documents/${id}`, { method: "DELETE", headers: authHeaders });
     loadDocs();
   }
 

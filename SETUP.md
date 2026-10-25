@@ -29,19 +29,19 @@ Free tier: 10 projects, 0.5 GiB storage — more than enough for this.
 
 Free tier: the first 200 million tokens on `voyage-4-lite` (the model this app uses) are free on every account — you will not hit this limit during testing.
 
-## 4. Auth secret
+## 4. Documents admin key
 
-This one you generate yourself, no account needed. Once dependencies are installed (see below), run:
+This one you generate yourself, no account needed. It is the secret that protects the document-upload page (there are no user accounts):
 
 ```bash
-npx auth secret
+openssl rand -hex 24
 ```
 
-This prints a value and can also write it directly into `.env.local` — paste the value in as `AUTH_SECRET` if it doesn't do so automatically.
+Paste the value into `.env.local` as `DOCUMENTS_ADMIN_KEY`. The upload page then lives at `/admin/documents/<that value>` and is linked from nowhere in the app. If the key is unset, document management is locked for everyone.
 
 ## 5. Fill in `.env.local`
 
-Copy `.env.local.example` to `.env.local` and fill in the four values above. `BLOB_READ_WRITE_TOKEN` can stay empty for local dev — see the file-storage fallback note in the README.
+Copy `.env.local.example` to `.env.local` and fill in the values above. `BLOB_READ_WRITE_TOKEN` can stay empty for local dev — see the file-storage fallback note in the README.
 
 ## 6. Set up the database schema
 
@@ -55,38 +55,28 @@ The `document_chunks` table uses a `vector` column type, so the `pgvector` exten
    ```bash
    npx drizzle-kit push
    ```
-   This creates the `users`, `documents`, and `document_chunks` tables from `drizzle/schema.ts`.
+   This creates the `documents` and `document_chunks` tables from `drizzle/schema.ts`.
 3. Now that the tables exist, create the search index — run the rest of the migration once against the same database (Neon's SQL editor, or `psql "$DATABASE_URL" -f drizzle/migrations/0001_vector_setup.sql`). It's safe to run the whole file even though it also re-enables the extension — it uses `IF NOT EXISTS`.
 4. **Verify it worked** rather than guessing from the SQL Editor output:
    ```bash
    npm run db:verify
    ```
-   This checks (against your real Neon database) that the `vector` extension is enabled, all three tables exist, and the HNSW search index was created — printing a ✓ or ✗ for each. Fix anything marked ✗ before moving on to step 7.
+   This checks (against your real Neon database) that the `vector` extension is enabled, both tables exist, and the HNSW search index was created — printing a ✓ or ✗ for each. Fix anything marked ✗ before moving on.
 
-## 7. Create your first admin account
-
-```bash
-npx tsx scripts/seed-admin.ts <username> <password>
-```
-
-Use that username/password to log in once the app is running — from there you can create more accounts (admin or volunteer) through the admin UI.
-
-## 8. Run it
+## 7. Run it
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000 — it redirects to `/login` since nothing is authenticated yet.
+Open http://localhost:3000 — it goes straight to the chat page (no login).
 
-## 9. What to test
+## 8. What to test
 
-- **Log in** with the admin account from step 7. Page and labels should be in Hebrew, RTL, by default.
 - **Language toggle** (top-right of the header) — switch to English and back; layout should flip LTR/RTL.
-- **Create a user**: go to the "משתמשים" / "Users" admin page, create a `volunteer` account.
-- **Upload a document**: go to "מסמכים" / "Documents", upload a small `.pdf`/`.txt`/`.md` file with a title. Status should move from "מעבד"/Processing to "מוכן"/Ready within a few seconds (it polls automatically). Since `BLOB_READ_WRITE_TOKEN` is unset, the file is saved under `./local-uploads` on your machine, not Vercel.
+- **Upload a document**: open `http://localhost:3000/admin/documents/<DOCUMENTS_ADMIN_KEY>`, upload a small `.pdf`/`.txt`/`.md` file with a title. Status should move from "מעבד"/Processing to "מוכן"/Ready within a few seconds (it polls automatically). Since `BLOB_READ_WRITE_TOKEN` is unset, the file is saved under `./local-uploads` on your machine, not Vercel.
 - **Ask a question** on the main chat page about something in the uploaded document — should stream back an answer grounded in it. Ask something unrelated — should get the "no documented procedure" fallback instead of a guess.
-- **Log out, log in as the volunteer account** — confirm the admin pages (`/admin/users`, `/admin/documents`) redirect away/aren't linked in the header, but chat still works.
+- **Check the lock**: `/admin/documents/wrong-key` and `/login` should both 404, and `/api/documents` without the key should return 403.
 
 Once all of that checks out locally, that's the green light to start uploading the real Habak procedure documents.

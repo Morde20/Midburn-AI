@@ -36,10 +36,10 @@ async function main() {
   const tables = await sql`
     SELECT table_name FROM information_schema.tables
     WHERE table_schema = 'public'
-      AND table_name IN ('users', 'documents', 'document_chunks')
+      AND table_name IN ('documents', 'document_chunks')
   `;
   const tableNames = new Set(tables.map((r) => r.table_name as string));
-  for (const t of ["users", "documents", "document_chunks"]) {
+  for (const t of ["documents", "document_chunks"]) {
     report(tableNames.has(t), `table "${t}" exists`);
   }
 
@@ -49,16 +49,6 @@ async function main() {
     WHERE indexname = 'document_chunks_embedding_hnsw_idx'
   `;
   report(idx.length > 0, "HNSW vector search index exists");
-
-  // 4. At least one admin user (only meaningful after step 7, but useful info)
-  if (tableNames.has("users")) {
-    const admins = await sql`SELECT username FROM users WHERE role = 'admin'`;
-    if (admins.length > 0) {
-      console.log(`  (found ${admins.length} admin account(s): ${admins.map((a) => a.username).join(", ")})`);
-    } else {
-      console.log("  (no admin account yet — that's step 7, not step 6)");
-    }
-  }
 
   console.log("");
   console.log(allOk ? "All step 6 checks passed." : "Some checks failed — see ✗ lines above.");

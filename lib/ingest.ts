@@ -50,13 +50,12 @@ export async function ingestDocument(params: {
   filename: string;
   mimeType: string;
   blobUrl: string;
-  uploadedBy: string;
   buffer: Buffer;
 }): Promise<
   | { id: string; status: "ready"; chunkCount: number }
   | { id: string; status: "failed"; error: string }
 > {
-  const { title, filename, mimeType, blobUrl, uploadedBy, buffer } = params;
+  const { title, filename, mimeType, blobUrl, buffer } = params;
 
   // Create the document row up front so it's visible as "processing"
   // immediately in the admin UI, even before ingestion finishes.
@@ -67,7 +66,6 @@ export async function ingestDocument(params: {
       filename,
       mimeType,
       blobUrl,
-      uploadedBy,
       status: "processing",
     })
     .returning();
