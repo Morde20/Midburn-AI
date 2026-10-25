@@ -38,6 +38,7 @@ import {
 } from "@/lib/system-prompt";
 import { translateToHebrew } from "@/lib/translate";
 import { applyGlossary } from "@/lib/glossary";
+import { refreshStaleUrlDocuments } from "@/lib/urlDocuments";
 import { anthropic } from "@ai-sdk/anthropic";
 import {
   streamText,
@@ -87,6 +88,13 @@ export async function POST(req: Request) {
   // first — deterministic, so it doesn't depend on the translation step
   // guessing a made-up term correctly. See lib/glossary.ts to add more.
   const glossaryNormalized = applyGlossary(question);
+  // Google Drive link documents change over time: re-read any that are due
+  // (see lib/urlDocuments.ts) while the question is being embedded below,
+  // so the search that follows sees the current version. A failed refresh
+  // never blocks the answer — the last good content keeps being served.
+  const refreshing = refreshStaleUrlDocuments().catch((err) =>
+    console.error("URL document refresh failed:", err)
+  );
   // The knowledge base is entirely Hebrew source material. Cross-lingual
   // embedding similarity (English question vs. Hebrew passage) is
   // measurably weaker than same-language matching, so non-Hebrew questions
@@ -98,6 +106,7 @@ export async function POST(req: Request) {
       ? glossaryNormalized
       : await translateToHebrew(glossaryNormalized);
   const queryEmbedding = await embedQuery(retrievalQuery);
+  await refreshing;
   const chunks = await searchSimilarChunks(queryEmbedding, TOP_K);
 
   const topSimilarity = chunks[0]?.similarity ?? 0;

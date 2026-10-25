@@ -19,8 +19,8 @@ const plex = localFont({
 });
 
 export const metadata = {
-  title: "חב״ק AI | Habak AI",
-  description: "Internal knowledge assistant for Habak at Midburn",
+  title: "מידברן AI | Midburn AI",
+  description: "Procedures assistant for Midburn 2026",
 };
 
 // viewportFit: "cover" lets content extend under the iPhone notch/home

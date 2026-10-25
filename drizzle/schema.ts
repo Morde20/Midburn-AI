@@ -59,6 +59,15 @@ export const documents = pgTable("documents", {
   filename: text("filename").notNull(),
   mimeType: varchar("mime_type", { length: 128 }).notNull(),
   blobUrl: text("blob_url").notNull(),
+  // "file": an uploaded PDF/txt/md, ingested once.
+  // "url": a Google Drive/Docs link that is re-read whenever questions are
+  // asked (see lib/urlDocuments.ts). For these, `blobUrl` holds the link too.
+  sourceType: varchar("source_type", { length: 16 }).notNull().default("file"),
+  sourceUrl: text("source_url"),
+  // SHA-256 of the last text we embedded — lets a re-read skip re-embedding
+  // when the Drive document has not changed.
+  contentHash: varchar("content_hash", { length: 64 }),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   status: documentStatusEnum("status").notNull().default("processing"),
   errorMessage: text("error_message"),
   chunkCount: integer("chunk_count").notNull().default(0),

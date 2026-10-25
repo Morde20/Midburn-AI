@@ -3,40 +3,48 @@
 /**
  * components/Header.tsx
  *
- * Shared top bar ("control room" look): logo + app name and the
- * Hebrew/English toggle. No nav links — the documents page is reachable
- * only through its secret URL.
+ * Shared top bar: Midburn logo + app name, an optional "New chat" button,
+ * and the Hebrew/English toggle. No nav links — the documents page is
+ * reachable only through its secret URL.
  *
- * `onMenu` (optional): when given, a hamburger button is shown on phones
- * (used by the chat page to open its menu drawer).
+ * `transparent` (optional): drops the bar background so it floats over the
+ * homepage photo.
+ *
+ * `onNewChat` (optional): when given, a "+ New chat" button is shown (used
+ * by the chat page while a conversation is open, to return to the homepage).
  */
 
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
-import { Logo } from "@/components/Logo";
 
-export function Header({ onMenu }: { onMenu?: () => void }) {
+export function Header({
+  onNewChat,
+  transparent = false,
+}: {
+  onNewChat?: () => void;
+  transparent?: boolean;
+}) {
   const { t, toggleLocale } = useLanguage();
 
   return (
-    <header className="border-b border-ctl-line px-3 sm:px-4 py-2 sm:py-2.5 flex flex-wrap items-center justify-between gap-2 bg-ctl-panel">
-      <div className="flex items-center gap-2.5 min-w-0 shrink-0">
-        {onMenu && (
-          <button
-            type="button"
-            onClick={onMenu}
-            aria-label={t.chat.openMenu}
-            className="md:hidden p-2 -m-1 shrink-0"
-          >
-            <span className="block w-5 h-0.5 bg-ctl-text mb-1.5" />
-            <span className="block w-5 h-0.5 bg-ctl-text mb-1.5" />
-            <span className="block w-5 h-0.5 bg-ctl-text" />
-          </button>
-        )}
-        <Logo className="w-5 text-ctl-amber" />
+    <header className={`border-b px-3 sm:px-6 py-2 sm:py-2.5 flex flex-wrap items-center justify-between gap-2 ${
+        transparent ? "border-transparent bg-transparent" : "border-ctl-line bg-ctl-panel/85"
+      }`}>
+      <div className="flex items-center gap-3 min-w-0 shrink-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/midburn-logo.png" alt="Midburn" className="h-10 sm:h-12 w-auto shrink-0" />
         <span className="font-semibold text-ctl-text text-sm truncate">{t.app.name}</span>
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
+        {onNewChat && (
+          <button
+            type="button"
+            onClick={onNewChat}
+            className="text-xs sm:text-sm bg-ctl-panel2 border border-ctl-line text-ctl-amber rounded-full px-3.5 py-1.5 hover:border-ctl-amber"
+          >
+            + {t.chat.newChat}
+          </button>
+        )}
         <button
           onClick={toggleLocale}
           className="text-xs border border-ctl-line rounded-full px-3 py-1.5 text-ctl-muted hover:text-ctl-text hover:bg-ctl-panel2"
