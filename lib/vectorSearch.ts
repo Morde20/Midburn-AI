@@ -8,7 +8,7 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { isSynonymWord } from "@/lib/glossary";
+import { synonymGroupOf } from "@/lib/glossary";
 
 export type RetrievedChunk = {
   content: string;
@@ -76,28 +76,49 @@ const STOPWORDS = new Set([
 const HEBREW_PREFIXES = "והבכלמש";
 const MAX_TERMS = 8;
 
-/** Content words of a question, with one Hebrew prefix letter stripped. */
-export function extractKeywordTerms(question: string): string[] {
+/**
+ * Word roots whose forms look different in text ("להחליף", "יוחלף",
+ * "החלפה"): any question word matching `test` is searched as any of `alts`.
+ */
+const ROOT_GROUPS: { test: RegExp; alts: string[] }[] = [
+  { test: /חליפ|חליף|חלפ|חלף/, alts: ["חליפ", "חליף", "חלפ", "חלף"] },
+];
+
+/**
+ * Content words of a question. Each term is a list of alternatives (a word
+ * and its synonyms or other forms); a chunk matches the term if it contains
+ * any of them. One Hebrew prefix letter is stripped from each word.
+ */
+export function extractKeywordTerms(question: string): string[][] {
   const words = question
     .replace(/[^\u05D0-\u05EAa-zA-Z0-9\s]/g, " ")
     .split(/\s+/)
     .filter(Boolean);
 
-  const terms: string[] = [];
+  const terms: string[][] = [];
+  const addTerm = (alts: string[]) => {
+    if (terms.some((t) => t.some((x) => alts.includes(x)))) return;
+    terms.push(alts);
+  };
+
   for (const word of words) {
     if (word.length < 3 || STOPWORDS.has(word)) continue;
+    const group = synonymGroupOf(word);
+    if (group) {
+      addTerm(group);
+      continue;
+    }
     const stripped =
-      word.length >= 4 && !isSynonymWord(word) && HEBREW_PREFIXES.includes(word[0])
-        ? word.slice(1)
-        : word;
-    if (STOPWORDS.has(stripped) || terms.includes(stripped)) continue;
-    terms.push(stripped);
+      word.length >= 4 && HEBREW_PREFIXES.includes(word[0]) ? word.slice(1) : word;
+    if (STOPWORDS.has(stripped)) continue;
+    const root = ROOT_GROUPS.find((g) => g.test.test(stripped));
+    addTerm(root ? root.alts : [stripped]);
   }
   return terms.slice(0, MAX_TERMS);
 }
 
 /** Minimum number of matching terms for a chunk to count as a keyword hit. */
-function minimumScore(termCount: number): number {
+export function minimumScore(termCount: number): number {
   return Math.max(2, Math.ceil(termCount * 0.6));
 }
 
@@ -110,9 +131,15 @@ export async function searchKeywordChunks(
   const minScore = minimumScore(terms.length);
 
   const scoreExpr = sql.join(
-    terms.map((t) => {
-      const pattern = `%${t.replace(/[\\%_]/g, "\\$&")}%`;
-      return sql`(CASE WHEN dc.content ILIKE ${pattern} THEN 1 ELSE 0 END)`;
+    terms.map((alts) => {
+      const conditions = sql.join(
+        alts.map((a) => {
+          const pattern = `%${a.replace(/[\\%_]/g, "\\$&")}%`;
+          return sql`dc.content ILIKE ${pattern}`;
+        }),
+        sql` OR `
+      );
+      return sql`(CASE WHEN ${conditions} THEN 1 ELSE 0 END)`;
     }),
     sql` + `
   );
