@@ -47,7 +47,7 @@ export function Header({
         )}
         <button
           onClick={toggleLocale}
-          className="text-xs border border-ctl-line rounded-full px-3 py-1.5 text-ctl-muted hover:text-ctl-text hover:bg-ctl-panel2"
+          className="text-xs font-semibold border border-ctl-amber rounded-full px-3.5 py-1.5 bg-ctl-night/60 backdrop-blur-sm text-ctl-amber hover:bg-ctl-night/80"
         >
           {t.common.langToggle}
         </button>
