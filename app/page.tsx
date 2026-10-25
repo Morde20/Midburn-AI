@@ -1,45 +1,32 @@
 "use client";
 
 /**
- * app/page.tsx — "control room" chat interface with a conversation sidebar,
- * FAQ chips and a sources panel.
+ * app/page.tsx — "control room" chat interface with an FAQ menu and a
+ * sources panel. Public: no login, and nothing is stored server-side.
  *
- * Behavior (per Morde's spec):
- *   - The page ALWAYS lands on the empty-state homepage (photo banner +
- *     greeting + input + FAQ chips) on load — it never auto-resumes the
- *     last conversation.
- *   - Past conversations are listed in a sidebar. Clicking one loads its
- *     full history. (Sources are only available for answers streamed live
- *     in this session — stored history rows have text only.)
- *   - Sending a message from the homepage creates a new conversation
- *     (title derived from that first message) and switches to it.
- *   - Clicking a FAQ chip on the homepage sends that question to the
- *     assistant like any typed question (real RAG answer + sources). The
- *     sidebar FAQ accordion shows the static answers from lib/faq.ts.
- *   - After 5 minutes of no new messages in the active conversation, the
- *     view automatically resets to the homepage — the conversation itself
- *     is already persisted (every message is written server-side as it
- *     happens), this just stops it being the "active" view.
+ * Behavior:
+ *   - The page lands on the empty-state homepage (photo banner + greeting +
+ *     input + FAQ chips). Conversations live only in this browser tab's
+ *     memory; there is no history list.
+ *   - Clicking a FAQ chip sends that question to the assistant like any
+ *     typed question (real RAG answer + sources). The sidebar FAQ accordion
+ *     does the same.
+ *   - After 5 minutes of no new messages the view resets to the homepage.
  *   - Sources: the server attaches the retrieved passages as message
  *     metadata (see app/api/chat/route.ts). On lg+ screens they are shown
  *     in a side panel for the latest answer; on smaller screens each
  *     answer has a collapsible "מקורות (n)" list underneath.
- *
- * conversationId travels to /api/chat as a query param (not the JSON body)
- * — see app/api/chat/route.ts for why.
  */
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Header } from "@/components/Header";
 import { SourceCard, type SourceItem } from "@/components/SourceCard";
 import { AnswerText } from "@/components/AnswerText";
 import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import { FAQ_ITEMS } from "@/lib/faq";
 
-type HistoryRow = { id: string; role: "user" | "assistant"; content: string };
-type ConversationRow = { id: string; title: string; updatedAt: string };
 type HabakMessage = UIMessage<{ sources?: SourceItem[] }>;
 
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
@@ -49,14 +36,8 @@ const PHOTO_FILTER =
   "sepia(1) saturate(2.4) hue-rotate(-14deg) brightness(.66) contrast(1.15)";
 
 export default function ChatPage() {
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [conversations, setConversations] = useState<ConversationRow[]>([]);
-  const [conversationsLoaded, setConversationsLoaded] = useState(false);
-  const [pendingFirstMessage, setPendingFirstMessage] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [faqOpen, setFaqOpen] = useState(false);
-  // True while a reopened (historical) conversation is shown: no sources panel.
-  const [isHistorical, setIsHistorical] = useState(false);
   const [openSourcesFor, setOpenSourcesFor] = useState<string | null>(null);
   // Sidebar is an always-visible column on md+ screens, but an off-canvas
   // drawer on phones (closed by default so the homepage isn't obstructed).
@@ -64,13 +45,8 @@ export default function ChatPage() {
   const { t, dir, locale } = useLanguage();
 
   const transport = useMemo(
-    () =>
-      new DefaultChatTransport<HabakMessage>({
-        api: activeConversationId
-          ? `/api/chat?conversationId=${activeConversationId}`
-          : "/api/chat",
-      }),
-    [activeConversationId]
+    () => new DefaultChatTransport<HabakMessage>({ api: "/api/chat" }),
+    []
   );
   const { messages, sendMessage, status, setMessages } = useChat<HabakMessage>({ transport });
   // "Busy" covers both the pre-first-token phase (status "submitted" — the
@@ -80,116 +56,37 @@ export default function ChatPage() {
   // nothing was shown until the model's first token arrived.
   const isBusy = status === "submitted" || status === "streaming";
 
-  const loadConversations = useCallback(async () => {
-    const res = await fetch("/api/conversations");
-    if (res.ok) setConversations(await res.json());
-    setConversationsLoaded(true);
-  }, []);
-
-  // Always start at the homepage on mount — just load the sidebar list,
-  // never auto-hydrate a past conversation into the active view.
-  useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
-
-  // Once a brand-new conversation's id lands (see startNewConversation
-  // below) and the transport above has re-memoized to point at it, send
-  // the message that was waiting on that. Doing this in an effect (rather
-  // than right after setActiveConversationId) guarantees `sendMessage`
-  // here is bound to the already-updated transport.
-  useEffect(() => {
-    if (pendingFirstMessage && activeConversationId) {
-      sendMessage({ text: pendingFirstMessage });
-      setPendingFirstMessage(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConversationId, pendingFirstMessage]);
-
   // 5-minute inactivity timer: resets to the homepage view if nothing new
-  // has been sent/received in a while. The conversation is already fully
-  // persisted server-side per message, so this only affects what's shown.
+  // has been sent/received in a while.
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
     if (messages.length === 0) return;
     inactivityTimer.current = setTimeout(() => {
-      setActiveConversationId(null);
-      setIsHistorical(false);
       setMessages([]);
-      loadConversations();
     }, INACTIVITY_TIMEOUT_MS);
     return () => {
       if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
     };
-  }, [messages, setMessages, loadConversations]);
+  }, [messages, setMessages]);
 
   function goToHomepage() {
-    setActiveConversationId(null);
-    setIsHistorical(false);
     setMessages([]);
     setSidebarOpen(false); // no-op on desktop, closes the mobile drawer
   }
 
-  async function openConversation(id: string) {
-    const res = await fetch(`/api/conversations/${id}/messages`);
-    if (!res.ok) return;
-    const rows: HistoryRow[] = await res.json();
-    setMessages(
-      rows.map((r) => ({
-        id: r.id,
-        role: r.role,
-        parts: [{ type: "text" as const, text: r.content }],
-      }))
-    );
-    setActiveConversationId(id);
-    setIsHistorical(true);
-    setSidebarOpen(false);
-  }
-
-  async function deleteConversation(id: string, e: React.MouseEvent) {
-    e.stopPropagation(); // don't also trigger openConversation on the row
-    if (!confirm(t.chat.deleteConversationConfirm)) return;
-    const res = await fetch(`/api/conversations/${id}`, { method: "DELETE" });
-    if (!res.ok) return;
-    setConversations((prev) => prev.filter((c) => c.id !== id));
-    if (id === activeConversationId) {
-      goToHomepage();
-    }
-  }
-
-  async function startNewConversation(text: string) {
-    const res = await fetch("/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ firstMessage: text }),
-    });
-    if (!res.ok) return;
-    const conversation: ConversationRow = await res.json();
-    setConversations((prev) => [conversation, ...prev]);
-    setPendingFirstMessage(text);
-    setIsHistorical(false);
-    setActiveConversationId(conversation.id);
-  }
-
-  // Shared by the input form and the FAQ chips: sends into the active
-  // conversation, or starts a new one from the homepage.
   function sendQuestion(text: string) {
     if (!text.trim() || isBusy) return;
-    if (activeConversationId) {
-      setIsHistorical(false);
-      sendMessage({ text });
-    } else {
-      startNewConversation(text);
-    }
+    sendMessage({ text });
   }
 
-  // FAQ questions (homepage chips + sidebar list): always open a NEW
-  // conversation and send the question, so the user gets a real answer.
+  // FAQ questions (homepage chips + sidebar list): start a fresh chat and
+  // send the question, so the user gets a real answer.
   function askFaq(text: string) {
     if (isBusy) return;
     setMessages([]);
     setSidebarOpen(false);
-    startNewConversation(text);
+    sendMessage({ text });
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -263,45 +160,10 @@ export default function ChatPage() {
           ✕
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto py-2">
-        <p className="px-4 pt-1 pb-2 text-xs text-ctl-muted">{t.chat.recent}</p>
-        {!conversationsLoaded ? null : conversations.length === 0 ? (
-          <p className="text-xs text-ctl-muted px-4 py-2">{t.chat.noConversations}</p>
-        ) : (
-          conversations.map((c) => (
-            <div
-              key={c.id}
-              onClick={() => openConversation(c.id)}
-              className={`group w-full flex items-center gap-1 px-4 py-2 cursor-pointer hover:bg-ctl-panel2 ${
-                c.id === activeConversationId ? "bg-ctl-panel2" : ""
-              }`}
-            >
-              <span
-                className={`flex-1 min-w-0 truncate text-sm ${
-                  c.id === activeConversationId
-                    ? "font-medium text-ctl-amber"
-                    : "text-ctl-text/80"
-                }`}
-                title={c.title}
-              >
-                {c.title}
-              </span>
-              <button
-                onClick={(e) => deleteConversation(c.id, e)}
-                aria-label={t.chat.deleteConversation}
-                title={t.chat.deleteConversation}
-                className="shrink-0 text-ctl-muted hover:text-ctl-bad opacity-0 group-hover:opacity-100 text-xs px-1"
-              >
-                ✕
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-      {/* FAQ accordion, pinned below the (scrollable) conversation list.
+      <div className="flex-1" />
+      {/* FAQ accordion, pinned to the bottom of the sidebar.
           Content is rendered above the toggle button so opening it grows
-          the panel upward, shrinking the conversation list rather than
-          pushing the button off the bottom of the sidebar. Static answers —
+          the panel upward rather than pushing the button off the bottom. Static answers —
           see lib/faq.ts. */}
       <div className="border-t border-ctl-line shrink-0">
         {faqOpen && (
@@ -458,8 +320,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Desktop sources panel (end side) — live conversations only. */}
-      {!isHistorical && (
+      {/* Desktop sources panel (end side). */}
       <aside
         dir={dir}
         className="hidden lg:flex lg:w-80 xl:w-96 shrink-0 flex-col border-s border-ctl-line bg-ctl-panel"
@@ -478,12 +339,11 @@ export default function ChatPage() {
           )}
         </div>
       </aside>
-      )}
     </div>
   );
 
   // Backdrop behind the mobile drawer — clicking it closes the sidebar,
-  // same as selecting a conversation or starting a new chat does. Hidden at
+  // same as starting a new chat does. Hidden at
   // md+ where the sidebar is a static column, not an overlay.
   const mobileBackdrop = sidebarOpen ? (
     <div

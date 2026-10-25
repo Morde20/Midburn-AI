@@ -18,17 +18,11 @@
  */
 
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { auth } from "@/lib/auth";
 import { ALLOWED_TYPES } from "@/lib/ingest";
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (session?.user.role !== "admin") {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const body = (await req.json()) as HandleUploadBody;
 
   try {

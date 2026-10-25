@@ -1,58 +1,28 @@
 /**
  * middleware.ts
  *
- * Edge middleware guarding every route:
- *  - Unauthenticated users are redirected to /login (pages) or get a 401 (API).
- *  - Admin-only routes (document management, user management) reject
- *    volunteers with a 403 before the request ever reaches the route handler.
+ * The chat is public (no login). The only protected surface is document
+ * management: every /api/documents* route requires the secret admin key,
+ * sent either as an `x-admin-key` header or a `key` query param (the
+ * Vercel Blob client upload can only pass it on the URL).
  *
- * Doing this in middleware — rather than only inside each route handler —
- * means a new API route can never accidentally ship without auth: the
- * matcher below is the single source of truth for what's protected.
+ * The key lives in the DOCUMENTS_ADMIN_KEY env var. If it is not set,
+ * document management is locked for everyone (fail closed).
  */
 
-import { auth } from "@/lib/auth";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
-const ADMIN_ONLY_PREFIXES = ["/api/documents", "/api/admin", "/admin"];
-const PUBLIC_PATHS = ["/login", "/api/auth"];
+export function middleware(req: NextRequest) {
+  const expected = process.env.DOCUMENTS_ADMIN_KEY;
+  const provided =
+    req.headers.get("x-admin-key") ?? req.nextUrl.searchParams.get("key");
 
-export default auth((req) => {
-  const { pathname } = req.nextUrl;
-
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
-    return NextResponse.next();
+  if (!expected || provided !== expected) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-
-  const session = req.auth;
-
-  if (!session?.user) {
-    if (pathname.startsWith("/api")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const loginUrl = new URL("/login", req.nextUrl.origin);
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  const role = session.user.role;
-  const isAdminRoute = ADMIN_ONLY_PREFIXES.some((p) => pathname.startsWith(p));
-
-  if (isAdminRoute && role !== "admin") {
-    if (pathname.startsWith("/api")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    return NextResponse.redirect(new URL("/", req.nextUrl.origin));
-  }
-
   return NextResponse.next();
-});
+}
 
 export const config = {
-  matcher: [
-    /*
-     * Match everything except static assets and Next internals.
-     */
-    "/((?!_next/static|_next/image|favicon.ico|midburn-hero\\.jpg|habak-logo-mask\\.png).*)",
-  ],
+  matcher: ["/api/documents/:path*"],
 };

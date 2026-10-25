@@ -1,7 +1,7 @@
 /**
  * app/api/documents/route.ts
  * GET — list all documents with status, for the admin management UI.
- * (Admin-only; enforced by middleware.ts.)
+ * (Requires the admin key; enforced by middleware.ts.)
  */
 
 import { db } from "@/lib/db";

@@ -11,18 +11,12 @@
  * app/api/documents/upload/route.ts (shared via lib/ingest.ts).
  */
 
-import { auth } from "@/lib/auth";
 import { ALLOWED_TYPES, ingestDocument } from "@/lib/ingest";
 
 export const runtime = "nodejs"; // pdf-parse needs Node APIs, not Edge
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (session?.user.role !== "admin") {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const { title, blobUrl, filename, mimeType } = (await req.json()) as {
     title?: string;
     blobUrl?: string;
@@ -57,7 +51,6 @@ export async function POST(req: Request) {
     filename,
     mimeType,
     blobUrl,
-    uploadedBy: session.user.id,
     buffer,
   });
 

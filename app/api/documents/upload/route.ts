@@ -18,7 +18,6 @@
  * this route via lib/ingest.ts).
  */
 
-import { auth } from "@/lib/auth";
 import { storeFile } from "@/lib/storage";
 import { ALLOWED_TYPES, ingestDocument } from "@/lib/ingest";
 
@@ -28,11 +27,6 @@ export const maxDuration = 60;
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (session?.user.role !== "admin") {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   const title = (formData.get("title") as string | null)?.trim();
@@ -63,7 +57,6 @@ export async function POST(req: Request) {
     filename: file.name,
     mimeType: file.type,
     blobUrl: stored.url,
-    uploadedBy: session.user.id,
     buffer,
   });
 
