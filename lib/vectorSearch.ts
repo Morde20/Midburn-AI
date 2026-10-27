@@ -71,6 +71,9 @@ const STOPWORDS = new Set([
   "יש", "אין", "ניתן", "אפשר", "צריך", "צריכה", "צריכים", "כדי", "גם", "הוא", "היא", "הם", "הן",
   "אל", "מן", "אבל", "כמו", "רק", "עוד", "אחר", "אחרי", "לפני", "תוך", "בין", "כאשר", "היכן",
   "לגבי", "בבקשה", "שלי", "שלנו", "הזה", "הזאת", "אותו", "אותה", "אצל",
+  "אתה", "אתם", "אתן", "יודע", "יודעת", "יודעים", "יודעות", "איזה", "איזו", "אילו", "תוכל", "תוכלי", "תוכלו",
+  "ספר", "ספרי", "תספר", "תספרי", "הסבר", "הסבירי", "תסביר", "תסבירי", "מידע", "נושא", "בנושא", "מהם", "מהן",
+  "כלשהו", "כלשהי", "דברים", "משהו", "הכל", "תגיד", "תגידי", "רוצה", "רוצים", "צריכות",
 ]);
 
 const HEBREW_PREFIXES = "והבכלמש";
@@ -117,17 +120,22 @@ export function extractKeywordTerms(question: string): string[][] {
   return terms.slice(0, MAX_TERMS);
 }
 
-/** Minimum number of matching terms for a chunk to count as a keyword hit. */
+/**
+ * Minimum number of matching terms for a chunk to count as a keyword hit.
+ * Deliberately lenient (about 40% of the question's content words, at least
+ * one): a short or general question is still a legitimate question, and the
+ * model is instructed to refuse when the retrieved text is not on topic.
+ */
 export function minimumScore(termCount: number): number {
-  return Math.max(2, Math.ceil(termCount * 0.6));
+  return Math.max(1, Math.ceil(termCount * 0.4));
 }
 
 export async function searchKeywordChunks(
   question: string,
-  limit: number = 3
+  limit: number = 4
 ): Promise<RetrievedChunk[]> {
   const terms = extractKeywordTerms(question);
-  if (terms.length < 2) return [];
+  if (terms.length < 1) return [];
   const minScore = minimumScore(terms.length);
 
   const scoreExpr = sql.join(
