@@ -36,6 +36,7 @@ import {
   getNoMatchResponse,
   detectQuestionLocale,
   getTodayLine,
+  getAnswerLanguageLine,
 } from "@/lib/system-prompt";
 import { translateToHebrew } from "@/lib/translate";
 import { applyGlossary, expandSynonyms } from "@/lib/glossary";
@@ -173,7 +174,7 @@ export async function POST(req: Request) {
       ...historyModelMessages,
       {
         role: "user",
-        content: `${getTodayLine()}\n\n${contextBlock}\n\nQUESTION: ${question}`,
+        content: `${getTodayLine()}\n${getAnswerLanguageLine(question)}\n\n${contextBlock}\n\nQUESTION: ${question}`,
       },
     ],
   });
