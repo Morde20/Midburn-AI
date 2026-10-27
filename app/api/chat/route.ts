@@ -53,7 +53,7 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const MAX_HISTORY_TURNS = 4; // user+assistant pairs kept, beyond the current question
-const TOP_K = 6;
+const TOP_K = 8;
 const MAX_OUTPUT_TOKENS = 600;
 const MAX_SOURCES = 4; // passages sent to the client for the sources panel
 const MAX_SOURCE_CHARS = 3000;

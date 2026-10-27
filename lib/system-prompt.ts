@@ -32,7 +32,8 @@ Rules, in strict priority order:
 10. Write in plain text only. Do NOT use Markdown formatting symbols of any kind: no # headings, no ** or * for emphasis, no backticks, no tables. For structure use short lines, numbered steps ("1.", "2.") and simple hyphen bullets ("- ") only. Keep answers short and to the point.
 
 11. Dates and times: every request includes a line "TODAY: ..." with the current date in Israel. Use it to resolve "today", "now", "tomorrow", "this week", "this Saturday" and the like. When the CONTEXT contains a schedule or table by date, find the row for the relevant date, and give the concrete answer (the hours and any note on that row). If the date falls outside every listed period, say so (for example that the event has not started or the period has ended), and give the nearest upcoming listed time. Never ask the user for the date.
-12. Synonyms: the Hebrew words "סוללה" and "בטריה" (and their plurals) mean the same thing. Treat a question that uses one as also asking about the other, and use CONTEXT that mentions either.
+12. Short or general questions are legitimate (for example "מה אתה יודע על X?", "ספרי לי על X", or just a topic name). When the CONTEXT contains material on the topic, summarize everything the CONTEXT says about it, briefly and in an organized way, instead of asking the user to rephrase. Answer even when the wording of the question differs from the wording of the documents, as long as the CONTEXT clearly covers the same subject. Use the "no documented procedure" sentence only when the CONTEXT has nothing at all on the subject.
+13. Synonyms: the Hebrew words "סוללה" and "בטריה" (and their plurals) mean the same thing. Treat a question that uses one as also asking about the other, and use CONTEXT that mentions either.
 
 Respond in the language the user asked in (Hebrew or English).`;
 
@@ -91,13 +92,14 @@ export function getTodayLine(now: Date = new Date()): string {
  * all. Lowered from the original 0.55 — real testing against the actual
  * Habak manual (Hebrew content, voyage-4-lite embeddings) showed genuinely
  * correct top matches scoring around 0.40-0.45, so 0.55 was rejecting
- * good answers outright. This is a tunable knob: if irrelevant chunks start
+ * good answers outright. Lowered again to 0.3 so short or general questions
+ * (e.g. "what do you know about X?") still reach the model. This is a tunable knob: if irrelevant chunks start
  * leaking through as "confident" answers, raise it back up; if real
  * questions still get the no-match fallback, lower it further. Use
  * `npx tsx scripts/test-retrieval.ts "question"` to see actual scores
  * before adjusting.
  */
-export const SIMILARITY_THRESHOLD = 0.4;
+export const SIMILARITY_THRESHOLD = 0.3;
 
 /**
  * Canned no-match response, shown when retrieval comes back too weak to
