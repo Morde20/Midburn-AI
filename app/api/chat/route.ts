@@ -54,7 +54,6 @@ export const maxDuration = 30;
 
 const MAX_HISTORY_TURNS = 4; // user+assistant pairs kept, beyond the current question
 const TOP_K = 8;
-const MAX_OUTPUT_TOKENS = 600;
 const MAX_SOURCES = 4; // passages sent to the client for the sources panel
 const MAX_SOURCE_CHARS = 3000;
 
@@ -158,7 +157,6 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: anthropic("claude-haiku-4-5-20251001"),
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
     // NOTE: as of ai@7, a `role: "system"` entry inside `messages` throws
     // ("System messages are not allowed in the prompt or messages fields").
     // The exact same SystemModelMessage object now goes in the separate
